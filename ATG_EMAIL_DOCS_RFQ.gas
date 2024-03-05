@@ -1,0 +1,121 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Definition.DefaultArgs("EmailDocs","Sender*!*Name*!*Rep*!*file*!*Desc")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Runs From Hook  #14291
+V.Local.sPart.Declare(String)
+V.Local.sRFQ.Declare(String)
+V.Local.squery.Declare(String)
+V.Local.iLinkID.Declare(Long)
+V.Local.sfile.Declare(String)
+V.Local.sRep.Declare(String)
+V.Local.sName.Declare(String)
+V.Local.sLine.Declare(String)
+V.Local.sEmail.Declare(String)
+V.Local.shold.Declare(String)
+V.Local.sDesc.Declare(String)
+V.Local.iRet.Declare(Long)
+V.Local.ic.Declare(Long)
+V.Local.sAttach.Declare(String)
+V.Local.sZip.Declare(String)
+V.Local.bRet.Declare(String)
+
+'should be set from screen
+V.Local.sData.Declare(String)
+F.Automation.Zip.CheckPresence(V.Local.bRet)
+F.Intrinsic.Control.If(V.Local.bRet,=,False)
+	F.Intrinsic.UI.Msgbox("XZip.dll not registered. Please register xzip.dll found in your Global\Plugins directory")
+	F.Intrinsic.Control.end
+F.Intrinsic.Control.endif
+
+F.Intrinsic.File.File2String(V.Passed.009005,V.Local.sData)
+F.Intrinsic.String.Split(V.Local.sdata,V.Ambient.NewLine,V.local.sData)
+
+F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+F.Global.Security.GetFullName(V.passed.009002,V.Local.sName)
+V.Local.sEmail.Set(V.Passed.009003)
+V.Local.sRep.Set(V.Passed.009001)
+F.Intrinsic.String.Split(V.Local.sData(0),V.ASCII.16,V.Local.sfile)
+V.Local.sRFQ.Set(V.Local.sfile(1))
+
+F.Intrinsic.Control.For(V.Local.ic,1,V.Local.sData.UBound,1)
+	F.Intrinsic.Control.If(V.Local.sData(v.Local.ic).Trim,<>,"")
+		F.Intrinsic.String.Concat(V.Caller.FilesDir,"\RFQ-",V.Local.sRFQ,"-",V.Local.ic,".zip",V.Local.sZip)
+		F.Intrinsic.String.Split(V.Local.sData(v.Local.ic),V.ASCII.16,V.Local.sfile)
+		'check inventory link
+		F.Intrinsic.String.Replace(V.Local.sfile(3),"!","",V.Local.sfile(3))
+		F.Intrinsic.String.Replace(V.Local.sfile(3),"*","",V.Local.sfile(3))
+		F.Intrinsic.String.Concat("Request For Quote( ",V.Local.sRFQ,") Part Number - ",V.Local.sfile(2)," Description: ",V.Local.sfile(3),V.Ambient.NewLine,"UM: ",V.Local.sfile(4),V.Ambient.newline,"QTY: ",V.Local.sfile(5),V.Local.sDesc)
+		F.Intrinsic.String.Concat(V.Local.sDesc,V.Ambient.NewLine,"Please return by ",V.Local.sfile(5),V.local.sDesc)
+		F.Intrinsic.Debug.Stop
+		V.Local.sPart.Set(V.Local.sfile(2))
+		F.Global.DocumentControl.GetLinkID(V.Local.sPart,30,V.Local.iLinkID)
+		'email docs in loop tied to groups.
+		F.Intrinsic.String.Concat("SELECT PATH, FILE, DESCRIPTION FROM ATG_DOC_ASSOC, ATG_DOC_G_FLAG_RFQ WHERE ATG_DOC_G_FLAG_RFQ.GRP_ID = ATG_DOC_ASSOC.GRP_ID AND ATG_DOC_G_FLAG_RFQ.EMAILDOCS = 1 AND ATG_DOC_ASSOC.LINK_ID = ",V.Local.iLinkID,V.Local.squery)
+		F.ODBC.Connection!conx.OpenRecordsetRO("rst",V.Local.sQuery)
+		F.Intrinsic.Control.If(V.odbc.conx!rst.EOF,=,True)
+			F.ODBC.conx!rst.Close
+			'check bom link Routers
+			F.Global.DocumentControl.GetLinkID(V.Local.sPart,35,V.Local.iLinkID)
+			F.Intrinsic.String.Concat("SELECT PATH, FILE, DESCRIPTION FROM ATG_DOC_ASSOC, ATG_DOC_G_FLAG_RFQ WHERE ATG_DOC_G_FLAG_RFQ.GRP_ID = ATG_DOC_ASSOC.GRP_ID AND ATG_DOC_G_FLAG_RFQ.EMAILDOCS = 1 AND ATG_DOC_ASSOC.LINK_ID = ",V.Local.iLinkID,V.Local.squery)
+			F.ODBC.Connection!conx.OpenRecordsetRO("rst",V.Local.sQuery)
+		F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+			F.Intrinsic.Control.DoUntil(V.odbc.conx!rst.EOF,=,True)
+				
+				F.Intrinsic.String.Right(V.ODBC.conx!rst.FieldValTrim!PATH,1,V.Local.shold)
+				F.Intrinsic.Control.If(V.Local.shold,<>,"\")
+					F.Intrinsic.String.Concat(V.ODBC.conx!rst.FieldValTrim!path,"\",V.odbc.conx!rst.FieldValTrim!FILE,V.Local.sattach)
+				F.Intrinsic.Control.Else
+					F.Intrinsic.String.Concat(V.ODBC.conx!rst.FieldValTrim!path,V.odbc.conx!rst.FieldValTrim!FILE,V.Local.sattach)
+				F.Intrinsic.Control.endif
+				F.Intrinsic.Debug.Stop
+
+				F.Automation.Zip.Zip(V.Local.sAttach,V.Local.sZip)
+				F.odbc.conx!rst.movenext
+			F.Intrinsic.Control.Loop
+			F.Intrinsic.Control.CallSub(Emaildocs,"Name",V.Local.sName.trim,"Rep",V.Local.srep.trim,"FILE",V.local.sZip.trim,"Sender",V.Local.sEmail.trim,"DESC",V.Local.sDesc,"RFQ",V.Local.sRFQ)
+			V.passed.777777.set(1)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.Control.CallSub(Emaildocs,"Name",V.Local.sName.trim,"Rep",V.Local.srep.trim,"FILE","","Sender",V.Local.sEmail.trim,"DESC",V.Local.sDesc,"RFQ",V.Local.sRFQ)
+
+		F.Intrinsic.Control.EndIf
+
+		F.ODBC.conx!rst.Close
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.ic)
+
+F.ODBC.Connection!conx.Close
+F.Intrinsic.Control.End
+
+Program.Sub.Main.End
+
+Program.Sub.EmailDocs.Start
+
+V.Local.sSubject.Declare(String)
+V.Local.sBody.Declare(String)
+V.Local.shold.Declare(String)
+V.Local.srep.Declare(String)
+
+F.Intrinsic.String.Concat(V.Args.desc,V.Ambient.NewLine,V.Ambient.NewLine,"The file attached has been sent from the GSS Document Control System.",V.Ambient.NewLine,V.Ambient.NewLine,V.Local.sBody)
+F.intrinsic.string.concat(V.local.sbody,"PLEASE NOTE: The information contained in this message is privileged and confidential. ",V.local.sbody)
+F.intrinsic.string.concat(V.local.sbody,"You are hereby notified that any distribution, dissemination or copying of this communication ",V.local.sbody)
+F.intrinsic.string.concat(V.local.sbody,"is strictly prohibited. If you have received this communication in error you should immediately ",V.local.sbody)
+F.intrinsic.string.concat(V.local.sbody,"delete this message. ",V.ambient.newline,V.local.sbody)
+
+F.Intrinsic.String.Concat("RFQ ",V.Args.RFQ,V.Local.sSubject)
+
+F.Intrinsic.Control.If(V.Args.file,<>,"")
+	F.Global.Messaging.CreateEMMessage(V.args.sender,V.args.name,V.args.rep,V.args.rep,V.Local.sSubject,V.Local.sbody,V.args.file)
+F.Intrinsic.Control.Else
+	F.Global.Messaging.CreateEMMessage(V.args.sender,V.args.name,V.args.rep,V.args.rep,V.Local.sSubject,V.Local.sbody,"")
+F.Intrinsic.Control.EndIf
+
+Program.Sub.EmailDocs.End
+
+
